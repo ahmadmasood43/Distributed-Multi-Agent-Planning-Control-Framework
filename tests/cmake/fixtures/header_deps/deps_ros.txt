@@ -1,0 +1,9 @@
+core/CMakeFiles/mapc_core.dir/src/common/logging.cpp.o: #deps 3, deps mtime 1791998100752112339 (VALID)
+    /src/mapc/core/src/common/logging.cpp
+    /opt/ros/jazzy/include/rclcpp/rclcpp/rclcpp.hpp
+    /usr/include/c++/13/string
+
+tests/CMakeFiles/mapc_header_check.dir/header_check/mapc_common_rng_hpp.cpp.o: #deps 2, deps mtime 1791998100752112339 (VALID)
+    /src/mapc/build/debug/tests/header_check/mapc_common_rng_hpp.cpp
+    /home/dev/ros2_ws/install/std_msgs/include/std_msgs/std_msgs/msg/string.hpp
+

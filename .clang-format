@@ -1,0 +1,26 @@
+---
+Language: Cpp
+BasedOnStyle: Google
+Standard: c++17
+IndentWidth: 4
+ColumnLimit: 100
+AccessModifierOffset: -4
+DerivePointerAlignment: false
+PointerAlignment: Left
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+IncludeBlocks: Regroup
+IncludeCategories:
+  # The header under test / implemented header is placed first by clang-format.
+  - Regex: '^<(gtest|gmock|benchmark)/'
+    Priority: 2
+  - Regex: '^<[a-z_]+>$'
+    Priority: 3
+  - Regex: '^"mapc/'
+    Priority: 1
+  - Regex: '^<mapc/'
+    Priority: 1
+  - Regex: '.*'
+    Priority: 2
+...

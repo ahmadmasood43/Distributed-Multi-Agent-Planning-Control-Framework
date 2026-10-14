@@ -29,11 +29,16 @@ Total for M0–M11 is about 16 weeks part-time. The minimum version that is
 
 ## M0 — Foundations
 
-- CMake project, `core` library target, `apps/` and `tests/`
-- CMake presets: `debug`, `release`, `asan-ubsan`, `tsan`; warnings as errors
-- FetchContent dependencies: GoogleTest, yaml-cpp, Google Benchmark
+- CMake project, `core` library target, `tests/` and `bench/` (`apps/` arrives
+  with its first executable in M1)
+- CMake presets: `debug`, `release`, `asan-ubsan`, `tsan`, `coverage`, `tidy`;
+  warnings as errors
+- FetchContent dependencies, pinned by SHA-256: GoogleTest and Google
+  Benchmark (yaml-cpp is added in M1, where the first loader needs it)
 - `.clang-format`, `.clang-tidy`, `.editorconfig`
-- GitHub Actions: GCC and Clang matrix, sanitizer jobs, clang-tidy
+- GitHub Actions: GCC and Clang matrix, sanitizer jobs, clang-tidy,
+  clang-format, coverage gate, no-ROS-in-core check
+- Install rules and a `find_package(mapc)` package config
 - `common/`: strong IDs, `Tick`, a `Result<T, E>`-style return type, seeded RNG
   wrapper, minimal logging
 

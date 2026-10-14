@@ -1,0 +1,8 @@
+---
+# Google Benchmark's registration macros create static objects and expect
+# BM_-prefixed function names.
+InheritParentConfig: true
+Checks: '-cert-err58-cpp'
+CheckOptions:
+  - { key: readability-identifier-naming.FunctionIgnoredRegexp, value: '^BM_.*' }
+...

@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CLANG_TOOLS_VERSION: "18.1.8"
+
+jobs:
+  build-test:
+    name: ${{ matrix.compiler }} / ${{ matrix.preset }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+        preset: [debug, release, asan-ubsan, tsan]
+        include:
+          - compiler: gcc
+            cc: gcc-13
+            cxx: g++-13
+          - compiler: clang
+            cc: clang-18
+            cxx: clang++-18
+    env:
+      CC: ${{ matrix.cc }}
+      CXX: ${{ matrix.cxx }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Allow ThreadSanitizer to map its shadow memory
+        if: matrix.preset == 'tsan'
+        # Recent kernels randomise mmap with more bits than the TSan runtime
+        # supports, which aborts with "unexpected memory mapping".
+        run: sudo sysctl vm.mmap_rnd_bits=28
+
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }}
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }}
+
+      - name: Test
+        run: ctest --preset ${{ matrix.preset }}
+
+  coverage:
+    runs-on: ubuntu-24.04
+    env:
+      CC: gcc-13
+      CXX: g++-13
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: |
+          sudo apt-get update && sudo apt-get install -y ninja-build
+          pipx install gcovr==8.5
+      - run: cmake --preset coverage
+      - run: cmake --build --preset coverage
+      - run: ctest --preset coverage
+      - name: Coverage report
+        run: |
+          gcovr --gcov-executable gcov-13 \
+                --xml coverage.xml --html-details coverage.html \
+                build/coverage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage*
+
+  clang-tidy:
+    runs-on: ubuntu-24.04
+    env:
+      CC: clang-18
+      CXX: clang++-18
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: |
+          sudo apt-get update && sudo apt-get install -y ninja-build
+          pipx install clang-tidy==${CLANG_TOOLS_VERSION}
+      - run: cmake --preset tidy
+      - run: cmake --build --preset tidy
+      - run: ctest --preset tidy
+
+  format:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: pipx install clang-format==${CLANG_TOOLS_VERSION}
+      - name: Check formatting
+        run: git ls-files '*.cpp' '*.hpp' | xargs clang-format --dry-run --Werror
+
+  architecture:
+    name: core has no ROS dependency
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -DSCAN_DIR=core -P tools/check_no_ros_in_core.cmake
