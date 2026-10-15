@@ -12,7 +12,7 @@ Planning runs concurrently on a thread pool. The same coordinator and agent logi
 
 Example scenarios: warehouse robots, a delivery fleet, and multi-drone search.
 
-> Status: milestones M0 (foundations) and M1 (graphs and single-agent planning) complete. See the [roadmap](docs/ROADMAP.md).
+> Status: milestones M0 (foundations), M1 (graphs and single-agent planning) and M2 (task allocation) complete. See the [roadmap](docs/ROADMAP.md).
 
 - [Design](docs/DESIGN.md): architecture, interfaces, threading model, protocols
 - [Roadmap](docs/ROADMAP.md): milestones with acceptance criteria
@@ -30,7 +30,7 @@ ctest --preset debug
 | Preset | Purpose |
 |---|---|
 | `debug` | Development build, warnings as errors |
-| `release` | Optimised build; also builds `bench/mapc_micro_bench` |
+| `release` | Optimised build; also builds the benchmarks in `bench/` |
 | `asan-ubsan` | AddressSanitizer + UndefinedBehaviorSanitizer |
 | `tsan` | ThreadSanitizer |
 | `coverage` | gcov instrumentation; report with `gcovr build/coverage` (settings in `gcovr.cfg`) |
@@ -89,11 +89,62 @@ build/release/bench/mapc_planning_bench
 
 On one development machine (4-connected moves, unit costs), A\* expands roughly 6× fewer nodes than Dijkstra on `den312d` (215 vs 1,211 per query) and roughly 30× fewer on the warehouse map (83 vs 2,453), with the same optimal cost on every query. Weighted A\* gains little on these maps because the grid heuristic is already tight.
 
+## Allocating tasks
+
+`mapc/allocation/` assigns pending tasks to idle agents. Strategies receive value snapshots of the agents (`AgentSnapshot`), never live agent objects:
+
+```cpp
+auto oracle = std::make_shared<mapc::DistanceOracle>(mapc::GraphView(map.graph()));
+const mapc::TravelCostModel cost(oracle);              // approach + delivery travel time
+const mapc::Assignment result = mapc::HungarianAllocator{}.allocate(agents, tasks, cost);
+for (const mapc::AssignedTask& a : result.assigned) { /* a.agent, a.task, a.cost */ }
+```
+
+- **`DistanceOracle`** gives exact shortest-path distances and caches one Dijkstra row per source node, so allocators never run a planner per pair. It follows the graph overlay and drops its cache when the overlay changes.
+- **`TravelCostModel`** charges the travel time from the agent to the task source plus the source-to-destination time, minus an optional bonus per priority level. Pairs with an unreachable leg are infeasible.
+- **Capabilities** are a 64-bit `CapabilitySet`. An agent missing a capability that a task requires gets an infeasible cost for that task and is never assigned to it.
+- **Strategies**: `GreedyNearestAllocator` (tasks in order, each takes the nearest free agent), `CostGreedyAllocator` (cheapest remaining pair first) and `HungarianAllocator`. The Hungarian allocator is optimal: it assigns as many pairs as possible, then minimises the total cost. It solves rectangular problems without padding them to a square, and its arithmetic is provably exact in 64 bits. A property test checks it against brute force on 3,000 random instances of up to 7 × 7.
+
+### Allocator comparison
+
+`bench/mapc_allocation_bench` (release preset) draws 8 seeded instances per size on the MovingAI map `warehouse-10-20-10-2-1`. Agents start on random cells, and each task has a random source and destination. A quarter of the tasks need a capability that only half of the agents have. Each row averages over the instances:
+
+```bash
+build/release/bench/mapc_allocation_bench
+```
+
+One run on a development machine (time per instance; cost in ticks; gap = extra cost over the Hungarian result). Where a greedy strategy assigns fewer tasks, its cost covers less work, so its gap understates how far it is from the optimum:
+
+| Agents × tasks | Strategy | Time | Assigned | Total cost | Gap |
+|---|---|---:|---:|---:|---:|
+| 10 × 10 | greedy nearest | 0.8 µs | 9.6 | 1,259 | 1.4 % |
+| | cost greedy | 2.5 µs | 9.8 | 1,280 | 3.4 % |
+| | Hungarian | 6.3 µs | **10** | **1,240** | — |
+| 100 × 100 | greedy nearest | 69 µs | 98.9 | 9,781 | 4.5 % |
+| | cost greedy | 1.1 ms | 98.5 | 9,529 | 1.8 % |
+| | Hungarian | 2.1 ms | **100** | **9,363** | — |
+| 200 × 200 | greedy nearest | 0.26 ms | 198.5 | 19,007 | 3.5 % |
+| | cost greedy | 5.4 ms | 197 | 18,458 | 0.5 % |
+| | Hungarian | 11.1 ms | **200** | **18,365** | — |
+| 20 × 100 | greedy nearest | 8 µs | 20 | 2,316 | 160 % |
+| | cost greedy | 170 µs | 20 | 930 | 3.4 % |
+| | Hungarian | 74 µs | 20 | **898** | — |
+| 100 × 20 | greedy nearest | 13 µs | 20 | 1,715 | 0.3 % |
+| | cost greedy | 172 µs | 20 | 1,712 | 0.1 % |
+| | Hungarian | 53 µs | 20 | **1,710** | — |
+
+What the numbers show:
+- **The greedy strategies leave capable work undone.** When the few agents with the special capability are used up on ordinary tasks, the special tasks are left unassigned. The Hungarian allocator always assigns the maximum possible number.
+- **On square instances, greedy is within a few percent on cost** but misses assignments. Cost greedy is closer than greedy nearest from 50 × 50 up.
+- **With more tasks than agents, the task order dominates.** Greedy nearest serves the first 20 tasks wherever they are, while the other two pick the 20 cheapest. That explains the 160 % gap. It is also why the coordinator should order tasks by priority, or use the priority bonus, rather than rely on cost alone.
+- **The Hungarian solver is fast enough for a coordinator.** At 200 × 200 it takes 11 ms, and on rectangular instances it beats cost greedy, because it runs in O(min² · max) rather than sorting every pair.
+- **Distances dominate the first round.** Building the cost matrices from a cold oracle takes 13–260 ms per instance (one Dijkstra row per agent node and task source on the 5,699-cell map). The oracle keeps those rows, so later rounds that reuse nodes are cheaper. The `*/costs` rows of the benchmark measure this.
+
 ## Layout
 
 ```
 apps/                command-line tools (mapc_plan)
-core/include/mapc/   public headers (namespace mapc): common/, graph/, planning/, io/
+core/include/mapc/   public headers (namespace mapc): common/, graph/, planning/, world/, allocation/, io/
 core/src/            library sources
 tests/unit/          GoogleTest unit and property tests
 tests/data/          small maps and graphs used by the tests

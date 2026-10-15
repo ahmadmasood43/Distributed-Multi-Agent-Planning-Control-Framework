@@ -15,6 +15,10 @@ include(GoogleTest)
 # Unit tests
 # ---------------------------------------------------------------------------
 add_executable(mapc_unit_tests
+    unit/allocation/allocator_properties_test.cpp
+    unit/allocation/cost_model_test.cpp
+    unit/allocation/distance_oracle_test.cpp
+    unit/allocation/task_allocator_test.cpp
     unit/common/strong_id_test.cpp
     unit/common/time_test.cpp
     unit/common/uint128_test.cpp
@@ -26,7 +30,8 @@ add_executable(mapc_unit_tests
     unit/io/graph_yaml_test.cpp
     unit/planning/best_first_search_test.cpp
     unit/planning/planner_properties_test.cpp
-    unit/version_test.cpp)
+    unit/version_test.cpp
+    unit/world/task_test.cpp)
 if(MAPC_BUILD_APPS)
     target_sources(mapc_unit_tests PRIVATE unit/apps/plan_cli_test.cpp)
     target_link_libraries(mapc_unit_tests PRIVATE mapc_plan_cli)

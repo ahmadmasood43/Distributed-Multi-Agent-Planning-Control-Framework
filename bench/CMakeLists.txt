@@ -34,3 +34,11 @@ target_link_libraries(mapc_planning_bench PRIVATE
     benchmark::benchmark)
 target_compile_definitions(mapc_planning_bench PRIVATE
     MAPC_MAPF_MAPS_DIR="${mapf_maps_SOURCE_DIR}")
+
+add_executable(mapc_allocation_bench allocation_bench.cpp)
+target_link_libraries(mapc_allocation_bench PRIVATE
+    mapc::core
+    mapc::warnings
+    benchmark::benchmark)
+target_compile_definitions(mapc_allocation_bench PRIVATE
+    MAPC_MAPF_MAPS_DIR="${mapf_maps_SOURCE_DIR}")

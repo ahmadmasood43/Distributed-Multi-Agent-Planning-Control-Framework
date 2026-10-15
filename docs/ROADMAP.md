@@ -63,13 +63,15 @@ explains how to build.
 ## M2 — Task allocation (§6.2)
 
 - `Task`, `AgentSnapshot`, `CostModel` with a cached distance oracle
-- Allocators: greedy nearest, cost-based greedy, Hungarian
-- Capability filtering through infinite costs
+- Allocators: greedy nearest, cost-based greedy, Hungarian (rectangular,
+  maximum number of assignments first, then minimum cost)
+- Capability filtering through infinite (infeasible) costs
 
 **Done when:**
 - Hungarian matches brute force for n ≤ 7 in a property test.
 - Rectangular cases (more tasks than agents, and the reverse) are tested.
-- A bench table compares total cost and runtime for the three strategies.
+- A bench table compares total cost and runtime for the three strategies
+  (random instances on the MovingAI warehouse map, fixed seed).
 
 ## M3 — Behavior tree engine (§7)
 

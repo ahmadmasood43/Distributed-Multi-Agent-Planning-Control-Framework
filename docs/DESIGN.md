@@ -81,9 +81,9 @@ core/
   include/mapc/
     common/                # ids, time, result types, logging, rng
     graph/                 # Graph, GraphBuilder, grid/road loaders
-    world/                 # WorldState, WorldSnapshot, events
+    world/                 # Task, AgentSnapshot, capabilities; WorldState, WorldSnapshot, events
     planning/              # Planner, Dijkstra, AStar, SpaceTimeAStar, ReservationTable
-    allocation/            # TaskAllocator, Greedy, CostBased, Hungarian, Auction
+    allocation/            # DistanceOracle, CostModel, TaskAllocator: greedy, cost-greedy, Hungarian
     constraints/           # Constraint types, ConstraintSet
     behavior/              # BT engine: Node, Sequence, Fallback, Decorators, Blackboard
     agent/                 # Agent, AgentController, MobileAgent
@@ -158,12 +158,18 @@ struct Task {
     TaskId id;
     NodeId source;
     NodeId destination;
-    int priority;                     // higher = more urgent
+    std::int32_t priority;            // higher = more urgent
     std::optional<Tick> deadline;
-    Requirements requirements;        // capability tags, resource needs
+    Requirements requirements;        // capabilities now; resource needs in M8
     TaskStatus status;                // Pending, Assigned, InProgress, Done, Failed, Cancelled
 };
 ```
+
+Capabilities are a `CapabilitySet`: a 64-bit mask of small integer indices
+that a scenario maps to names (lifting, cold storage, flying). An agent can do
+a task when its set contains every capability the task requires. A mask keeps
+the check to one instruction and makes snapshots cheap to copy; 64 kinds of
+capability is plenty for the scenarios planned.
 
 ### 4.4 Agents
 
@@ -183,8 +189,8 @@ public:
 - Agents are owned as `std::unique_ptr<Agent>` by whoever hosts them: the
   in-process simulator or an agent process.
 - Strategies (`TaskAllocator`, `Planner`) **never receive `Agent` objects**.
-  They receive `AgentSnapshot` values: id, position, capabilities and current
-  task. The original sketch's `std::vector<Agent>` would not compile, because
+  They receive `AgentSnapshot` values: id, node, capabilities and current
+  task (invalid when idle). The original sketch's `std::vector<Agent>` would not compile, because
   `Agent` is abstract. Passing live polymorphic objects would also let
   allocators reach into agents mid-update. Value snapshots fix both problems.
 - `MobileAgent` is the concrete agent. It owns an `AgentController`, which owns
@@ -334,26 +340,65 @@ custom validators register through a factory.
 class TaskAllocator {
 public:
     virtual ~TaskAllocator() = default;
-    virtual Assignment allocate(const std::vector<AgentSnapshot>& agents,
-                                const std::vector<Task>& tasks,
-                                const CostModel& cost) = 0;
+    // Builds the cost matrix, calls solve(), checks and maps the result.
+    Assignment allocate(const std::vector<AgentSnapshot>& agents,
+                        const std::vector<Task>& tasks,
+                        const CostModel& cost) const;
+    virtual std::vector<MatrixMatch> solve(const CostMatrix& costs) const = 0;
+    virtual std::string_view name() const = 0;
 };
 ```
 
-- `CostModel` estimates the cost of agent *a* doing task *t*: distance from
-  the agent to the source, plus source to destination, plus priority and
-  deadline penalties. It caches all-pairs or landmark distances so that
-  allocators don't run full planners.
+- `allocate` is the entry point the coordinator uses. It rejects invalid or
+  duplicate ids, builds a `CostMatrix` (agents × tasks), and lets the strategy
+  `solve` it. Strategies only ever see the matrix, so they are small, stateless
+  and testable without a graph. `allocate` also checks every strategy's answer
+  (feasible pairs only, each agent and task at most once), so a broken
+  strategy fails loudly instead of double-booking an agent.
+- Every agent passed in is treated as available. The coordinator passes idle
+  agents and pending tasks.
+- **Capability mismatches are infeasible** and are never assigned.
+  `CostMatrix::build` marks them itself, without asking the cost model, so no
+  cost model can get this wrong.
+- `CostModel` estimates the cost of agent *a* doing task *t*. The default
+  `TravelCostModel` is the travel time from the agent to the source, plus
+  source to destination, minus an optional priority bonus (ticks per priority
+  level, so urgent tasks win when there are more tasks than agents). A pair is
+  infeasible if either leg is unreachable. Deadline penalties arrive with
+  deadline-aware allocation in M8.
+- Travel times come from a `DistanceOracle`: exact shortest-path distances,
+  cached per source node. The first query from a node runs one full Dijkstra
+  search and keeps the whole row (8 bytes per graph node), so allocators never
+  run a planner per pair. Agents and task sources repeat between rounds, so
+  the cache pays off over a run. The oracle honours the overlay and drops its
+  cache when the overlay's version changes. Exact distances were chosen over
+  landmark bounds because allocation quality is compared against an optimum,
+  and lower bounds would blur that comparison.
+- Costs are `TaskCost` values: whole ticks within ±2^40, or infeasible. The
+  limit keeps every sum an allocator forms inside 64 bits; the cost model
+  throws instead of wrapping if a cost would exceed it.
 - Strategies:
-  - **Greedy nearest**: O(A·T) baseline.
+  - **Greedy nearest**: tasks, in the order given, each take the cheapest
+    free agent. With `TravelCostModel` the only agent-dependent part of a
+    task's cost is the approach distance, so this is "nearest free agent
+    first". O(A·T). The coordinator orders the tasks, for example by
+    priority and arrival.
   - **Cost-based greedy**: picks the globally cheapest (agent, task) pair
-    repeatedly.
-  - **Hungarian (Kuhn–Munkres)**: O(n³) on a cost matrix padded to square with
-    dummy rows or columns. It is optimal for one-shot assignment, and tests
-    check it against brute force on small random instances.
+    repeatedly. O(A·T·log(A·T)).
+  - **Hungarian (Kuhn–Munkres)**: optimal for one-shot assignment. It assigns
+    as many pairs as possible and, among those, minimises the total cost.
+    Rectangular matrices are solved directly in O(n²·m) for n = min(A, T),
+    m = max(A, T), rather than padded to a square, so a few agents never pay
+    for a long task list squared. Infeasible pairs get a cost M larger than
+    the cost range of any whole assignment, and one extra "unassigned" column
+    keeps the dual potentials bounded by M, so the arithmetic is exact in 64
+    bits. A property test checks it against brute force on random instances
+    up to 7 × 7.
   - **Auction (stretch)**: Bertsekas-style. Its main use is in distributed
     mode, where agents bid over the transport.
-- Capability mismatches get infinite cost and are never assigned.
+- Every strategy is deterministic: the same input gives the same assignment.
+  The greedy strategies break ties by lower agent index, then lower task
+  index.
 
 ### 6.3 Planning concurrency and plan commit
 

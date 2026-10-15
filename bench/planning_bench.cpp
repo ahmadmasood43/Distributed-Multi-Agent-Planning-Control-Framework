@@ -9,6 +9,7 @@
 #include "mapc/planning/best_first_search.hpp"
 #include "mapc/planning/heuristics.hpp"
 
+#include "map_workload.hpp"
 #include <benchmark/benchmark.h>
 
 #include <cstdint>
@@ -36,34 +37,6 @@ struct Workload {
     std::vector<std::pair<NodeId, NodeId>> queries;
 };
 
-/// Nodes of the largest weakly connected region (grid edges are symmetric).
-std::vector<NodeId> largestRegion(const mapc::Graph& graph) {
-    std::vector<int> region(graph.nodeCount(), -1);
-    std::vector<NodeId> best;
-    int next_region = 0;
-    for (std::size_t seed = 0; seed < graph.nodeCount(); ++seed) {
-        if (region[seed] != -1) {
-            continue;
-        }
-        std::vector<NodeId> members{NodeId{static_cast<NodeId::rep_type>(seed)}};
-        region[seed] = next_region;
-        for (std::size_t i = 0; i < members.size(); ++i) {
-            for (const mapc::EdgeId edge : graph.outEdges(members[i])) {
-                const NodeId next = graph.target(edge);
-                if (region[next.value()] == -1) {
-                    region[next.value()] = next_region;
-                    members.push_back(next);
-                }
-            }
-        }
-        if (members.size() > best.size()) {
-            best = std::move(members);
-        }
-        ++next_region;
-    }
-    return best;
-}
-
 std::unique_ptr<Workload> loadWorkload(const std::string& name) {
     auto loaded = mapc::GridMap::loadMovingAi(std::string(MAPC_MAPF_MAPS_DIR) + "/" + name);
     if (!loaded) {
@@ -73,7 +46,7 @@ std::unique_ptr<Workload> loadWorkload(const std::string& name) {
     auto workload = std::make_unique<Workload>();
     workload->map = std::make_shared<const mapc::GridMap>(std::move(loaded).value());
     workload->heuristic = std::make_shared<const mapc::GridHeuristic>(*workload->map);
-    const std::vector<NodeId> region = largestRegion(workload->map->graph());
+    const std::vector<NodeId> region = mapc::bench::largestRegion(workload->map->graph());
     mapc::Rng rng(kSeed);
     for (std::size_t i = 0; i < kQueries; ++i) {
         workload->queries.emplace_back(region[rng.uniformBelow(region.size())],

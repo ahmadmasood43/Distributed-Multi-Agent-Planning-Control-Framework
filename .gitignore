@@ -4,3 +4,4 @@ compile_commands.json
 *.gcda
 *.gcno
 coverage/
+secret/

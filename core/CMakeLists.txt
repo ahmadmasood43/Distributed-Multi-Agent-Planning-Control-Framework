@@ -18,6 +18,10 @@ configure_file(
     @ONLY)
 
 add_library(mapc_core
+    src/allocation/cost_model.cpp
+    src/allocation/distance_oracle.cpp
+    src/allocation/hungarian.cpp
+    src/allocation/task_allocator.cpp
     src/common/logging.cpp
     src/common/rng.cpp
     src/graph/graph.cpp
@@ -25,7 +29,8 @@ add_library(mapc_core
     src/graph/grid_map.cpp
     src/planning/best_first_search.cpp
     src/planning/heuristics.cpp
-    src/planning/planner.cpp)
+    src/planning/planner.cpp
+    src/world/task.cpp)
 add_library(mapc::core ALIAS mapc_core)
 
 target_include_directories(mapc_core PUBLIC
