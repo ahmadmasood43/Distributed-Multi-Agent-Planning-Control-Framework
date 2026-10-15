@@ -54,9 +54,10 @@ elseif(DEFINED BUILD_DIR)
         find_program(NINJA NAMES ninja ninja-build REQUIRED)
     endif()
     if(NOT DEFINED TARGETS)
-        # The core library plus the per-header self-containment objects, which
-        # are the only translation units that compile header-only core code.
-        set(TARGETS mapc_core mapc_header_check)
+        # The core libraries plus the per-header self-containment objects,
+        # which are the only translation units that compile header-only core
+        # code.
+        set(TARGETS mapc_core mapc_io mapc_header_check)
     endif()
     file(REAL_PATH "${BUILD_DIR}" _base_dir)
 

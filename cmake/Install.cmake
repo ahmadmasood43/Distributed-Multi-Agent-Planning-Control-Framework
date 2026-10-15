@@ -11,9 +11,11 @@ install(TARGETS mapc_core
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
+# mapc_io is not installed yet, so neither are its headers.
 install(DIRECTORY "${PROJECT_SOURCE_DIR}/core/include/mapc"
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-    FILES_MATCHING PATTERN "*.hpp")
+    FILES_MATCHING PATTERN "*.hpp"
+    PATTERN "io" EXCLUDE)
 
 install(FILES "${PROJECT_BINARY_DIR}/generated/include/mapc/version.hpp"
     DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/mapc")

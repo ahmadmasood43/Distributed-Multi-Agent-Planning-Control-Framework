@@ -1,7 +1,11 @@
 # Fails if the built core library references ROS symbols.
 #
 #   cmake -DLIBRARY=<path to libmapc_core.a/.so> [-DNM=<nm>] [-DREADELF=<readelf>]
-#         -P tools/check_core_symbols.cmake
+#         [-DALLOWED_NEEDED=<lib1|lib2>] -P tools/check_core_symbols.cmake
+#
+# ALLOWED_NEEDED names first-party shared libraries (without the ".so..."
+# suffix, e.g. libmapc_core) that LIBRARY may need in addition to the
+# toolchain runtimes.
 #
 # Header and build-system checks cannot see a dependency created by declaring a
 # ROS function by hand (`extern "C" int rcl_init(...);`) and leaving the link to
@@ -69,6 +73,10 @@ endforeach()
 # Shared libraries: every DT_NEEDED entry must be a toolchain or sanitizer
 # runtime library.
 set(_needed_count 0)
+set(_allowed_needed "")
+if(DEFINED ALLOWED_NEEDED)
+    string(REPLACE "|" ";" _allowed_needed "${ALLOWED_NEEDED}")
+endif()
 if(LIBRARY MATCHES "\\.so(\\.[0-9.]+)?$")
     if(NOT DEFINED READELF OR READELF STREQUAL "")
         find_program(READELF NAMES readelf llvm-readelf REQUIRED)
@@ -84,7 +92,13 @@ if(LIBRARY MATCHES "\\.so(\\.[0-9.]+)?$")
     foreach(_entry IN LISTS _needed)
         string(REGEX REPLACE ".*\\[([^]]+)\\]$" "\\1" _soname "${_entry}")
         math(EXPR _needed_count "${_needed_count} + 1")
-        if(NOT _soname MATCHES "${_runtime_regex}")
+        set(_first_party FALSE)
+        foreach(_allowed IN LISTS _allowed_needed)
+            if(_soname MATCHES "^${_allowed}\\.so")
+                set(_first_party TRUE)
+            endif()
+        endforeach()
+        if(NOT _soname MATCHES "${_runtime_regex}" AND NOT _first_party)
             list(APPEND _violations "${LIBRARY}: DT_NEEDED ${_soname} is not a toolchain runtime library")
         endif()
     endforeach()

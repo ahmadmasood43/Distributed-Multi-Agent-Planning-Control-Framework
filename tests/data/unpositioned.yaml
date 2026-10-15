@@ -1,0 +1,8 @@
+# Graph without node positions: A* falls back to the zero heuristic.
+nodes:
+  - id: a
+  - id: b
+  - id: c
+edges:
+  - {from: a, to: b, cost: 2}
+  - {from: b, to: c, cost: 3}

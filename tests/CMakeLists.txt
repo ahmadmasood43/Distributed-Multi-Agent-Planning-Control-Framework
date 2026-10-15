@@ -17,13 +17,26 @@ include(GoogleTest)
 add_executable(mapc_unit_tests
     unit/common/strong_id_test.cpp
     unit/common/time_test.cpp
+    unit/common/uint128_test.cpp
     unit/common/result_test.cpp
     unit/common/rng_test.cpp
     unit/common/logging_test.cpp
+    unit/graph/graph_test.cpp
+    unit/graph/grid_map_test.cpp
+    unit/io/graph_yaml_test.cpp
+    unit/planning/best_first_search_test.cpp
+    unit/planning/planner_properties_test.cpp
     unit/version_test.cpp)
+if(MAPC_BUILD_APPS)
+    target_sources(mapc_unit_tests PRIVATE unit/apps/plan_cli_test.cpp)
+    target_link_libraries(mapc_unit_tests PRIVATE mapc_plan_cli)
+endif()
+target_compile_definitions(mapc_unit_tests PRIVATE
+    MAPC_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data")
 
 target_link_libraries(mapc_unit_tests PRIVATE
     mapc::core
+    mapc::io
     mapc::warnings
     GTest::gtest_main
     GTest::gmock)
@@ -186,6 +199,11 @@ add_test(NAME architecture.generated_requirements_are_allowlisted
         "-DREQUIREMENTS=${PROJECT_BINARY_DIR}/architecture/mapc_core-$<CONFIG>.requirements.cmake"
         -P ${PROJECT_SOURCE_DIR}/tools/check_generated_requirements.cmake)
 set_tests_properties(architecture.generated_requirements_are_allowlisted PROPERTIES LABELS architecture)
+add_test(NAME architecture.generated_io_requirements_are_allowlisted
+    COMMAND ${CMAKE_COMMAND}
+        "-DREQUIREMENTS=${PROJECT_BINARY_DIR}/architecture/mapc_io-$<CONFIG>.requirements.cmake"
+        -P ${PROJECT_SOURCE_DIR}/tools/check_generated_requirements.cmake)
+set_tests_properties(architecture.generated_io_requirements_are_allowlisted PROPERTIES LABELS architecture)
 
 # mapc_add_generated_requirements_test(<case> [<expected violation regex>])
 function(mapc_add_generated_requirements_test case)
@@ -221,6 +239,10 @@ mapc_add_generated_requirements_test(deferred_direct_link
 # when an enclosing directory already found Threads. A parent that adds a ROS
 # dependency to mapc_core afterwards is outside the guarantee (it controls its
 # own build), but the change must be visible in the generated requirements.
+# Reuse the yaml-cpp sources this build already downloaded, so the fixture
+# projects configure offline and without repeated downloads.
+FetchContent_GetProperties(yaml-cpp SOURCE_DIR _mapc_yaml_source_dir)
+
 function(mapc_add_parent_project_test case)
     set(_expect "")
     if(ARGC GREATER 1)
@@ -235,6 +257,7 @@ function(mapc_add_parent_project_test case)
             "-DGENERATOR=${CMAKE_GENERATOR}"
             -DMAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
             -DCXX=${CMAKE_CXX_COMPILER}
+            -DYAML_SOURCE_DIR=${_mapc_yaml_source_dir}
             -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/run_parent_project.cmake)
     set_tests_properties(architecture.parent_project_${case} PROPERTIES LABELS architecture)
 endfunction()
@@ -282,5 +305,12 @@ if(CMAKE_NM)
     add_test(NAME architecture.core_symbols_are_ros_free
         COMMAND ${CMAKE_COMMAND} -DLIBRARY=$<TARGET_FILE:mapc_core> -DNM=${CMAKE_NM}
                 -P ${PROJECT_SOURCE_DIR}/tools/check_core_symbols.cmake)
-    set_tests_properties(architecture.core_symbols_are_ros_free PROPERTIES LABELS architecture)
+    add_test(NAME architecture.io_symbols_are_ros_free
+        COMMAND ${CMAKE_COMMAND} -DLIBRARY=$<TARGET_FILE:mapc_io> -DNM=${CMAKE_NM}
+                -DALLOWED_NEEDED=libmapc_core
+                -P ${PROJECT_SOURCE_DIR}/tools/check_core_symbols.cmake)
+    set_tests_properties(
+        architecture.core_symbols_are_ros_free
+        architecture.io_symbols_are_ros_free
+        PROPERTIES LABELS architecture)
 endif()

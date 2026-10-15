@@ -1,0 +1,7 @@
+---
+# Test code dereferences optionals directly when the test setup guarantees a
+# value (a failed assumption crashes the test, which reports it), and GoogleTest
+# style relies on static test data.
+InheritParentConfig: true
+Checks: '-bugprone-unchecked-optional-access,-cert-err58-cpp'
+...

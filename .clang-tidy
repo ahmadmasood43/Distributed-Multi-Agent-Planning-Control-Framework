@@ -60,7 +60,7 @@ CheckOptions:
   - { key: readability-identifier-naming.TemplateParameterCase,   value: CamelCase }
   - { key: readability-identifier-naming.MacroDefinitionCase,     value: UPPER_CASE }
   - { key: readability-identifier-naming.TypeAliasCase,           value: CamelCase }
-  - { key: readability-identifier-naming.TypeAliasIgnoredRegexp,  value: '^(rep|rep_type|tag_type|value_type|error_type|result_type)$' }
+  - { key: readability-identifier-naming.TypeAliasIgnoredRegexp,  value: '^(rep|rep_type|tag_type|value_type|error_type|result_type|iterator_category|difference_type|pointer|reference)$' }
   - { key: readability-identifier-naming.MethodIgnoredRegexp,     value: '^(min|max)$' }
   - { key: misc-const-correctness.AnalyzeValues,                  value: true }
 ...

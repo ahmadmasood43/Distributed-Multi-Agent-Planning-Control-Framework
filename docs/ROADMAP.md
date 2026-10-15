@@ -48,7 +48,8 @@ explains how to build.
 ## M1 — Graph and single-agent planning (§4.2, §5.1–5.2)
 
 - `Graph` (CSR), `GraphBuilder`, `GraphOverlay`
-- Loaders: MovingAI `.map` grids and a YAML node/edge list
+- Loaders: MovingAI `.map` grids, and a YAML node/edge list in a separate
+  `mapc_io` library (adds yaml-cpp, which `mapc_core` must not depend on)
 - `Planner` interface, `PlanResult`, search statistics
 - Dijkstra, A\*, weighted A\*, plus grid and Euclidean heuristics
 - `mapc_plan` CLI
@@ -56,7 +57,8 @@ explains how to build.
 **Done when:**
 - A property test shows A\* cost equals Dijkstra cost on 1,000 random graphs.
 - A weighted-A\* test asserts the `w × optimal` bound.
-- A benchmark covers MovingAI maps such as `den312d` and `warehouse-10-20-10-2-1`.
+- A benchmark covers MovingAI maps such as `den312d` and `warehouse-10-20-10-2-1`
+  (downloaded at a pinned hash, not committed).
 
 ## M2 — Task allocation (§6.2)
 

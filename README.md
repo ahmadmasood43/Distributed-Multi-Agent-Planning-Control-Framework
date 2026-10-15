@@ -12,7 +12,7 @@ Planning runs concurrently on a thread pool. The same coordinator and agent logi
 
 Example scenarios: warehouse robots, a delivery fleet, and multi-drone search.
 
-> Status: milestone M0 (foundations) complete. See the [roadmap](docs/ROADMAP.md).
+> Status: milestones M0 (foundations) and M1 (graphs and single-agent planning) complete. See the [roadmap](docs/ROADMAP.md).
 
 - [Design](docs/DESIGN.md): architecture, interfaces, threading model, protocols
 - [Roadmap](docs/ROADMAP.md): milestones with acceptance criteria
@@ -51,12 +51,52 @@ target_link_libraries(my_app PRIVATE mapc::core)
 
 `add_subdirectory()` also works; tests and benchmarks are then off by default.
 
+## Planning a path
+
+`mapc_plan` (built in every preset) plans single-agent paths on MovingAI grid maps or YAML graphs:
+
+```bash
+build/debug/apps/mapc_plan grid tests/data/small.map 0 0 4 2
+```
+
+The output looks like this:
+
+```
+planner:   astar
+status:    found
+expanded:  10
+generated: 13
+cost:      8
+steps:     9
+path:      (0,0)@0 (1,0)@1 (2,0)@2 (3,0)@3 (4,0)@4 (5,0)@5 (5,1)@6 (5,2)@7 (4,2)@8
+```
+
+To plan on a YAML road graph instead:
+
+```bash
+build/debug/apps/mapc_plan graph tests/data/roads.yaml depot shop --planner dijkstra
+```
+
+Options select the planner (`dijkstra`, `astar`, `wastar --weight w`), 8-connected moves (`--eight`), an expansion budget and a start tick. The exit status is 0 when a path is found, 1 when there is no path, and 2 for bad input. The YAML graph format is documented in `core/include/mapc/io/graph_yaml.hpp`.
+
+### Benchmark
+
+`bench/mapc_planning_bench` (release preset) runs each planner on 64 seeded, reachable queries on the MovingAI MAPF maps `den312d` and `warehouse-10-20-10-2-1`, which are downloaded at a pinned hash:
+
+```bash
+build/release/bench/mapc_planning_bench
+```
+
+On one development machine (4-connected moves, unit costs), A\* expands roughly 6× fewer nodes than Dijkstra on `den312d` (215 vs 1,211 per query) and roughly 30× fewer on the warehouse map (83 vs 2,453), with the same optimal cost on every query. Weighted A\* gains little on these maps because the grid heuristic is already tight.
+
 ## Layout
 
 ```
-core/include/mapc/   public headers (namespace mapc)
+apps/                command-line tools (mapc_plan)
+core/include/mapc/   public headers (namespace mapc): common/, graph/, planning/, io/
 core/src/            library sources
-tests/unit/          GoogleTest unit tests
+tests/unit/          GoogleTest unit and property tests
+tests/data/          small maps and graphs used by the tests
 tests/cmake/         fixtures for build-rule tests
 bench/               Google Benchmark micro-benchmarks
 cmake/               warnings, sanitizers, coverage, install modules

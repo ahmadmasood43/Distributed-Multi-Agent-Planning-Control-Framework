@@ -128,15 +128,28 @@ links the core as a normal CMake dependency.
 ### 4.2 Graph
 
 - `Graph` is an immutable directed weighted graph in adjacency-array (CSR)
-  layout. Nodes carry optional metadata: position (for heuristics), capacity
-  and tags.
-- `GraphBuilder` constructs it. Loaders cover 2D grids (ASCII maps, including
-  the MovingAI `.map` format for benchmarks) and explicit node/edge lists for
-  road networks.
-- **Dynamic changes do not mutate the `Graph`.** Blocked edges and changed costs
-  live in a `GraphOverlay` inside the world state. Planners query
-  `effectiveCost(edge, overlay)`. The base graph stays shareable across threads
-  without locks.
+  layout. Edge costs are whole ticks (at least one). Each node has an optional
+  position (for heuristics) and a capacity. Tags (zones) are deferred to M8.
+  Every built graph has a process-unique `id()`, so overlays and heuristics can
+  detect being paired with the wrong graph.
+- `GraphBuilder` constructs it and validates the input: unknown nodes, self
+  loops, non-positive costs, duplicate edges, non-finite positions and zero
+  capacity. The first problem is reported in insertion order, together with the
+  index of the offending node or edge, so loaders can point at a line.
+- Loaders:
+  - `GridMap` builds 4- or 8-connected grids from the MovingAI `.map` format,
+    with no corner cutting, as in the benchmarks.
+  - `mapc::io::parseGraphYaml` reads explicit node/edge lists for road
+    networks. It lives in the separate `mapc_io` library, so `mapc_core` stays
+    free of third-party dependencies (yaml-cpp).
+- **Dynamic changes do not mutate the `Graph`.** Blocked edges and raised costs
+  live in a `GraphOverlay`, and planners search a `GraphView` (graph plus
+  optional overlay). The base graph stays shareable across threads without
+  locks.
+- **Overlays can only raise costs.** Every heuristic is admissible and
+  consistent for the base costs, so it stays valid under any overlay.
+  Lowering a cost would silently break that, so it is rejected; to make an edge
+  cheaper, rebuild the graph.
 
 ### 4.3 Tasks
 
@@ -200,32 +213,61 @@ struct PlanRequest {
     NodeId start;
     NodeId goal;
     Tick start_time;
-    const ConstraintSet* constraints;  // agent-specific hard constraints
-    const ReservationTable* reservations; // may be null for single-agent planners
+    SearchLimits limits;  // max_expansions (0 = unlimited)
+    // From M5/M8: const ConstraintSet* constraints;
+    //             const ReservationTable* reservations;
 };
 
 class Planner {
 public:
     virtual ~Planner() = default;
-    virtual PlanResult plan(const WorldSnapshot& world, const PlanRequest& req) = 0;
+    virtual PlanResult plan(const GraphView& view, const PlanRequest& req) = 0;
     virtual std::string_view name() const = 0;
 };
 ```
 
-`PlanResult` is either a `Path` (a sequence of `(NodeId, Tick)`) or a typed
-failure (`NoPath`, `Timeout`, `ConstraintInfeasible`). It also carries search
-statistics such as expanded nodes and wall time. A `Planner` instance is
-**not** required to be thread-safe. The executor gives each worker its own
-instance, created from a `PlannerFactory`, which keeps scratch buffers
-lock-free and reusable.
+`PlanResult` holds the outcome and the search statistics:
+- The outcome is a `Result<Path, PlanFailure>`. A `Path` is a sequence of
+  `(NodeId, Tick)` steps plus its cost. The failure is one of `InvalidRequest`,
+  `NoPath` or `LimitReached` (`ConstraintInfeasible` arrives with constraints in
+  M5/M8).
+- `SearchStats` counts expanded and generated nodes, the largest open list, and
+  wall time. Everything except wall time is deterministic.
+
+Search budgets count expansions, not wall-clock time. A timeout would make
+results depend on machine load, which conflicts with deterministic simulation.
+
+Planners take a `GraphView` rather than the whole `WorldSnapshot`: the view is
+the only part of the world a single-agent search needs. From M4 on, a snapshot
+provides the view.
+
+A `Planner` instance is **not** required to be thread-safe. The executor gives
+each worker its own instance, created from a `PlannerFactory`. That keeps
+scratch buffers lock-free and reusable.
 
 ### 5.2 Single-agent planners
 
+All three are one `BestFirstSearch` engine ordered by `f = g + w·h`, without
+re-opening closed nodes:
+
 | Planner | Notes |
 |---|---|
-| Dijkstra | Reference implementation. Property tests check other planners' path costs against it. |
-| A\* | Admissible heuristic from node positions (Manhattan/octile for grids, Euclidean for roads), or zero. |
-| Weighted A\* | `f = g + w·h`. Path cost is bounded by `w × optimal`, and a test asserts that bound. |
+| Dijkstra | Zero heuristic. An independent Bellman-Ford reference checks it in the property tests. |
+| A\* | With a consistent heuristic, returns the same cost as Dijkstra (property-tested on 1,000 random graphs, with and without overlays). |
+| Weighted A\* | Path cost is at most `w × optimal`, also asserted on 1,000 random graphs. `w` is an exact fraction, so priorities are computed in integers. |
+
+Heuristics, each bound to one graph:
+
+| Heuristic | Estimate |
+|---|---|
+| `ZeroHeuristic` | Always zero. |
+| `GridHeuristic` | Manhattan distance on 4-connected grids. On 8-connected grids, octile distance, except that a diagonal costing more than two straight moves counts as two straight moves, and diagonals cheaper than straight moves give the diagonal cost × Chebyshev distance. All three cases are consistent lower bounds. |
+| `EuclideanHeuristic` | Straight-line distance × the cheapest cost per unit length over all edges, rounded down with a small floating-point safety margin. |
+
+Determinism and performance details:
+- Ties are broken by deeper `g`, then smaller node id.
+- Per-node scratch arrays are kept between queries and reset in O(1) with a
+  generation stamp.
 
 ### 5.3 Multi-agent planning
 

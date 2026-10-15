@@ -1,5 +1,7 @@
 #include "mapc/common/rng.hpp"
 
+#include "mapc/common/uint128.hpp"
+
 #include <cmath>
 #include <stdexcept>
 #include <utility>
@@ -10,27 +12,6 @@ namespace {
 
 constexpr std::uint64_t rotl(std::uint64_t x, unsigned k) noexcept {
     return (x << k) | (x >> (64U - k));
-}
-
-/// Full 64x64 -> 128-bit product, returned as {high, low}. Portable alternative
-/// to unsigned __int128, which -Wpedantic rejects.
-constexpr std::pair<std::uint64_t, std::uint64_t> mul128(std::uint64_t a,
-                                                         std::uint64_t b) noexcept {
-    constexpr std::uint64_t kLowMask = 0xFFFFFFFFULL;
-    const std::uint64_t a_lo = a & kLowMask;
-    const std::uint64_t a_hi = a >> 32U;
-    const std::uint64_t b_lo = b & kLowMask;
-    const std::uint64_t b_hi = b >> 32U;
-
-    const std::uint64_t lo_lo = a_lo * b_lo;
-    const std::uint64_t hi_lo = a_hi * b_lo;
-    const std::uint64_t lo_hi = a_lo * b_hi;
-    const std::uint64_t hi_hi = a_hi * b_hi;
-
-    const std::uint64_t cross = (lo_lo >> 32U) + (hi_lo & kLowMask) + lo_hi;
-    const std::uint64_t high = (hi_lo >> 32U) + (cross >> 32U) + hi_hi;
-    const std::uint64_t low = (cross << 32U) | (lo_lo & kLowMask);
-    return {high, low};
 }
 
 // Domain-separation constant so derived streams are unrelated to Rng(key).
@@ -68,16 +49,16 @@ std::uint64_t Rng::uniformBelow(std::uint64_t bound) {
         throw std::invalid_argument("Rng::uniformBelow: bound must be positive");
     }
     // Lemire, "Fast Random Integer Generation in an Interval" (2019).
-    // product = {high, low}; the high word is the candidate result and the low
+    // The high word of the 128-bit product is the candidate result; the low
     // word decides whether it falls in the biased region that must be redrawn.
-    auto product = mul128(nextU64(), bound);
-    if (product.second < bound) {
+    auto product = UInt128::multiply(nextU64(), bound);
+    if (product.low < bound) {
         const std::uint64_t threshold = (0U - bound) % bound;
-        while (product.second < threshold) {
-            product = mul128(nextU64(), bound);
+        while (product.low < threshold) {
+            product = UInt128::multiply(nextU64(), bound);
         }
     }
-    return product.first;
+    return product.high;
 }
 
 std::int64_t Rng::uniformInt(std::int64_t lo, std::int64_t hi) {

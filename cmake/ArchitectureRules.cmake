@@ -261,6 +261,11 @@ function(_mapc_evaluate_rules target violations_var visited_var)
         foreach(_prop IN LISTS _MAPC_${_kind}_INCLUDE_PROPS)
             _mapc_get_prop("${_t}" ${_prop} _dirs)
             foreach(_dir IN LISTS _dirs)
+                # Generate-time evaluation turns install-only entries of
+                # dependencies into empty strings; CMake ignores those.
+                if(_dir STREQUAL "")
+                    continue()
+                endif()
                 _mapc_unwrap_genex("${_dir}" _plain)
                 if(_plain MATCHES "\\$<")
                     list(APPEND _violations "${_t} ${_prop}: unsupported generator expression '${_dir}'")

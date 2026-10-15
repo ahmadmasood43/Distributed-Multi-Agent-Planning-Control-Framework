@@ -1,0 +1,12 @@
+# Small road network used by the mapc_plan tests.
+nodes:
+  - {id: depot, position: [0, 0]}
+  - {id: cross, position: [3, 4]}
+  - {id: shop, position: [10, 4]}
+  - {id: farm, position: [0, 10]}
+  - {id: island, position: [50, 50]}
+edges:
+  - {from: depot, to: cross, cost: 5, bidirectional: true}
+  - {from: cross, to: shop, cost: 7, bidirectional: true}
+  - {from: depot, to: farm, cost: 10}
+  - {from: farm, to: shop, cost: 11}

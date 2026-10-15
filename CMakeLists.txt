@@ -18,6 +18,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 # ---------------------------------------------------------------------------
 include(CMakeDependentOption)
 
+option(MAPC_BUILD_APPS "Build the command-line tools" ${PROJECT_IS_TOP_LEVEL})
 option(MAPC_BUILD_TESTS "Build the unit tests" ${PROJECT_IS_TOP_LEVEL})
 option(MAPC_BUILD_BENCHMARKS "Build the micro-benchmarks" ${PROJECT_IS_TOP_LEVEL})
 option(MAPC_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
@@ -53,6 +54,10 @@ include(ArchitectureRules)
 # Targets
 # ---------------------------------------------------------------------------
 add_subdirectory(core)
+
+if(MAPC_BUILD_APPS)
+    add_subdirectory(apps)
+endif()
 
 if(MAPC_BUILD_TESTS)
     enable_testing()
