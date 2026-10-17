@@ -12,7 +12,7 @@ Planning runs concurrently on a thread pool. The same coordinator and agent logi
 
 Example scenarios: warehouse robots, a delivery fleet, and multi-drone search.
 
-> Status: milestones M0 (foundations), M1 (graphs and single-agent planning) and M2 (task allocation) complete. See the [roadmap](docs/ROADMAP.md).
+> Status: milestones M0 (foundations), M1 (graphs and single-agent planning), M2 (task allocation) and M3 (behavior trees) complete. See the [roadmap](docs/ROADMAP.md).
 
 - [Design](docs/DESIGN.md): architecture, interfaces, threading model, protocols
 - [Roadmap](docs/ROADMAP.md): milestones with acceptance criteria
@@ -140,11 +140,58 @@ What the numbers show:
 - **The Hungarian solver is fast enough for a coordinator.** At 200 × 200 it takes 11 ms, and on rectangular instances it beats cost greedy, because it runs in O(min² · max) rather than sorting every pair.
 - **Distances dominate the first round.** Building the cost matrices from a cold oracle takes 13–260 ms per instance (one Dijkstra row per agent node and task source on the 5,699-cell map). The oracle keeps those rows, so later rounds that reuse nodes are cheaper. The `*/costs` rows of the benchmark measure this.
 
+## Behavior trees
+
+`mapc/behavior/` (namespace `mapc::bt`) is a small behavior tree engine for agent control. Trees are ticked with the simulation time, never a wall clock, so a run is reproducible. A C++ DSL mirrors the shape of the tree:
+
+```cpp
+using namespace mapc::bt;
+Tree tree(reactiveFallback("agent",
+    sequence("recover", condition("fault?", isFaulted), action("recover", recover)),
+    sequence("work",
+        condition("has task?", hasTask),
+        fallback("ensure path", condition("has path?", hasPath), retry(3, action("plan", plan))),
+        reactiveSequence("follow", condition("path valid?", pathValid), action("follow", follow))),
+    action("idle", idle)));
+tree.tick(now);                  // Success, Failure or Running
+std::cout << tree.dump();        // ASCII tree with each node's last state
+```
+
+- **Composites**: `Sequence` and `Fallback` resume at a running child; `ReactiveSequence` and `ReactiveFallback` start over every tick and halt lower-priority children that are still running, so a fault branch preempts the task branch in the tick the fault appears. `Parallel(k-of-n)` succeeds at k successes.
+- **Decorators**: `Inverter`, `Retry(n)` (the next attempt starts on the next tick), `Timeout(ticks)` and `RateLimit(ticks)`, all measured in simulation ticks.
+- **Leaves**: `Condition` and `Action` from lambdas (an action can have a halt callback), or a `StatefulAction` subclass with start, continue and halt hooks.
+- **`Blackboard`**: typed entries behind `BlackboardKey<T>`; reading a value as the wrong type throws.
+- **Halting is reliable**: halting reaches every running node below, a node that throws is halted together with its ancestors, and destroying a tree halts it.
+
+Every node type has tests for its status semantics: how `Running` propagates, what memory and reactive composites re-tick, and which children a halt reaches.
+
+### Toy agent demo
+
+`mapc_bt_demo` runs one agent with the default agent tree from the [design](docs/DESIGN.md#7-behavior-trees) in a fake grid world. A script blocks an aisle while the agent is on it, raises a fault, seals off one goal and blocks another:
+
+```bash
+build/debug/apps/mapc_bt_demo                     # add --dump-every-tick for a tree dump per tick
+```
+
+```
+  t=3  * aisle (8,2) blocked
+  t=3  path blocked at (8,2): replanning
+  t=3  follow path halted at (3,1)
+  t=4  plan task#1 -> (8,5): 9 moves
+  t=9  * fault
+  t=9  fault: stopped, path released
+  t=9  follow path halted at (6,3)
+  t=12  fault cleared: resuming
+  ...
+  t=20  abandon task#2 -> (4,2): no path after 3 attempts
+  t=26  cancel task#4 -> (1,5): goal is blocked
+```
+
 ## Layout
 
 ```
-apps/                command-line tools (mapc_plan)
-core/include/mapc/   public headers (namespace mapc): common/, graph/, planning/, world/, allocation/, io/
+apps/                command-line tools (mapc_plan, mapc_bt_demo)
+core/include/mapc/   public headers (namespace mapc): common/, graph/, planning/, world/, allocation/, behavior/, io/
 core/src/            library sources
 tests/unit/          GoogleTest unit and property tests
 tests/data/          small maps and graphs used by the tests

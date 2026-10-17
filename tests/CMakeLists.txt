@@ -19,6 +19,10 @@ add_executable(mapc_unit_tests
     unit/allocation/cost_model_test.cpp
     unit/allocation/distance_oracle_test.cpp
     unit/allocation/task_allocator_test.cpp
+    unit/behavior/blackboard_test.cpp
+    unit/behavior/composites_test.cpp
+    unit/behavior/decorators_test.cpp
+    unit/behavior/tree_test.cpp
     unit/common/strong_id_test.cpp
     unit/common/time_test.cpp
     unit/common/uint128_test.cpp
@@ -33,8 +37,10 @@ add_executable(mapc_unit_tests
     unit/version_test.cpp
     unit/world/task_test.cpp)
 if(MAPC_BUILD_APPS)
-    target_sources(mapc_unit_tests PRIVATE unit/apps/plan_cli_test.cpp)
-    target_link_libraries(mapc_unit_tests PRIVATE mapc_plan_cli)
+    target_sources(mapc_unit_tests PRIVATE
+        unit/apps/bt_demo_test.cpp
+        unit/apps/plan_cli_test.cpp)
+    target_link_libraries(mapc_unit_tests PRIVATE mapc_bt_demo_lib mapc_plan_cli)
 endif()
 target_compile_definitions(mapc_unit_tests PRIVATE
     MAPC_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data")

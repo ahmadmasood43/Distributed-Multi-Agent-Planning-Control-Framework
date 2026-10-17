@@ -75,7 +75,7 @@ explains how to build.
 
 ## M3 — Behavior tree engine (§7)
 
-- `Node`, `Status`, `Blackboard`
+- `Node`, `Status`, typed `Blackboard`, `Tree` ticked with simulation time
 - `Sequence`, `Fallback`, `ReactiveSequence`, `ReactiveFallback`, `Parallel`
 - Decorators: `Inverter`, `Retry`, `Timeout`, `RateLimit`
 - Builder DSL in C++ for composing trees, plus an ASCII tree dump for debugging
@@ -83,7 +83,8 @@ explains how to build.
 **Done when:**
 - Each node type has tests for status semantics, including how `Running`
   propagates and how reactive nodes halt running children.
-- A toy agent tree runs against a fake world.
+- A toy agent tree runs against a fake world (`mapc_bt_demo`: replanning
+  around a blocked aisle, preemption by a fault, retry exhaustion).
 
 ## M4 — Simulation loop and in-process coordination (§4.4–4.5, §6.1, §6.4, §9.1)
 

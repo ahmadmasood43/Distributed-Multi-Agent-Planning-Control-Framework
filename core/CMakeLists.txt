@@ -22,6 +22,12 @@ add_library(mapc_core
     src/allocation/distance_oracle.cpp
     src/allocation/hungarian.cpp
     src/allocation/task_allocator.cpp
+    src/behavior/blackboard.cpp
+    src/behavior/composites.cpp
+    src/behavior/decorators.cpp
+    src/behavior/leaves.cpp
+    src/behavior/node.cpp
+    src/behavior/tree.cpp
     src/common/logging.cpp
     src/common/rng.cpp
     src/graph/graph.cpp

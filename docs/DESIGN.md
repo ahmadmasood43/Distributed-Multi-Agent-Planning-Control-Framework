@@ -444,8 +444,8 @@ order. `Ros2Transport` maps topics to ROS 2 topics with custom `.msg` types.
 
 ## 7. Behavior trees
 
-The project uses a small BT engine of roughly 500 lines, written for this
-framework, rather than BehaviorTree.CPP:
+The project uses a small BT engine (about 900 lines including headers),
+written for this framework, rather than BehaviorTree.CPP:
 
 - The engine is a core part of the project's value and needs to be fully
   understood and defensible.
@@ -455,11 +455,41 @@ framework, rather than BehaviorTree.CPP:
 An adapter for BehaviorTree.CPP can come later if XML-authored trees are
 needed.
 
-**Node types**: `Sequence`, `Fallback` (selector), `ReactiveSequence`,
-`Parallel(k-of-n)`, decorators (`Inverter`, `Retry(n)`, `Timeout(ticks)`,
-`RateLimit`), and conditions and actions defined as lambdas or classes.
-Statuses are `Success`, `Failure` and `Running`. A shared, typed `Blackboard`
-uses `std::any` with typed accessors.
+The engine lives in `mapc/behavior/`, namespace `mapc::bt` (its short names,
+such as `Status` and `Sequence`, would otherwise be ambiguous in `mapc`).
+
+**Ticking.** `Tree::tick(now)` ticks the root with the simulation time, which
+must never go backwards; no node reads a wall clock. Statuses are `Success`,
+`Failure` and `Running`. A node that returns `Running` is ticked again on a
+later tick to continue, or halted to abandon its work. `halt()` reaches only
+running nodes and halts everything running below them. A node that is not
+running holds no in-progress state, so its next tick starts it afresh. If a
+node throws, it and its ancestors are halted as the exception unwinds, so the
+tree is never left with a node that believes it is running. Destroying a tree
+halts it.
+
+**Node types**:
+
+| Node | Semantics |
+|---|---|
+| `Sequence` | children in order until one fails; resumes at a `Running` child (memory) |
+| `Fallback` (selector) | children in order until one succeeds; resumes at a `Running` child |
+| `ReactiveSequence` | restarts at the first child every tick; a failing or `Running` child halts any later child still running |
+| `ReactiveFallback` | restarts at the first child every tick; a succeeding or `Running` child halts any later child still running, so a higher-priority branch preempts a lower one |
+| `Parallel(k-of-n)` | ticks unfinished children; succeeds at k successes, fails once k is out of reach, then halts the rest |
+| `Inverter` | swaps `Success` and `Failure` |
+| `Retry(n)` | up to n attempts; a failed attempt returns `Running` and the next attempt starts on the next tick (within one tick the world is unchanged, so an immediate retry would fail the same way) |
+| `Timeout(ticks)` | the child is ticked only while less than `ticks` have passed since the run started; at the limit it is halted and `Timeout` fails |
+| `RateLimit(ticks)` | starts the child at most once per period; in between it returns the last completed result without ticking the child; a running child is ticked every tick |
+| `Condition`, `Action` | leaves from lambdas; an `Action` may have a halt callback |
+| `StatefulAction` | base class for leaves with separate start, continue and halt hooks |
+
+A shared, typed `Blackboard` stores values in `std::any`, and every access goes
+through a `BlackboardKey<T>`, so a value is always read back as the type it was
+stored as (a mismatch throws). Trees are composed with a small C++ DSL
+(`sequence(...)`, `retry(3, ...)` and so on) that mirrors the tree's shape, and
+`dumpTree` prints a tree as indented ASCII with each node's last state, for
+debugging and traces.
 
 **Default agent tree** (domain-agnostic):
 
@@ -485,6 +515,11 @@ ReactiveFallback
 later tick sees the future resolve and returns `Success` or `Failure`, so the
 BT never blocks the simulation thread. Scenario-specific actions such as Pickup
 or Scan are leaf nodes registered by the scenario.
+
+M3 exercises this shape with a toy agent (`apps/mapc_bt_demo`) in a fake grid
+world, with synchronous planning. It adds one leaf to the tree above: an
+`AbandonTask` action after `Retry(3) → RequestPlan` in the path fallback, so a
+task that cannot be planned is given up and the agent takes the next one.
 
 ## 8. Execution and threading model
 
